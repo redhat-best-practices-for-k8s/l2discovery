@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  namespace: l2discovery
+  name: l2discovery
+  labels:
+    tier: node
+    app: l2discovery
+spec:
+  selector:
+    matchLabels:
+      name: l2discovery
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        tier: node
+        app: l2discovery
+        name: l2discovery
+    spec:
+      hostNetwork: true
+      serviceAccountName: l2discovery
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: l2discovery
+        imagePullPolicy: Always
+        securityContext:
+          privileged: true
+          runAsUser: 0
+          capabilities:
+            add:
+            - NET_ADMIN
+            - NET_RAW
+            - SYS_CHROOT
+            - FOWNER
+        image: quay.io/testnetworkfunction/l2discovery:latest
+        resources:
+          requests:
+            memory: "200Mi"
+            cpu: "100m"
+          limits:
+            memory: "200Mi"
+            cpu: "100m"
