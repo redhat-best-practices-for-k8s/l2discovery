@@ -1,8 +1,0 @@
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: l2discovery
-  labels:
-    name: l2discovery
-    openshift.io/cluster-monitoring: "true"
