@@ -68,4 +68,7 @@ Each openshift node reports L2 connectivity with a JSON log as shown below. The 
 }
 ```
 
-In addition to frames with the experimental, frames with the ptp Ethertype are collected, but not transmitted. This helps identify which port are already receiving PTP protocol frames.
+
+Frames with the ptp Ethertype are also collected, but not transmitted. This helps identify which port are already receiving PTP protocol frames.
+
+![discovery_workflow](doc/ethertypeListening.svg)
