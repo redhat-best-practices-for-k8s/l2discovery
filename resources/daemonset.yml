@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  namespace: l2discovery
+  namespace: default
   name: l2discovery
   labels:
     tier: node
@@ -20,24 +20,28 @@ spec:
         name: l2discovery
     spec:
       hostNetwork: true
-      serviceAccountName: l2discovery
+      securityContext: {}
+      serviceAccount: default
+      serviceAccountName: default
       nodeSelector:
         kubernetes.io/os: linux
       tolerations:
-      - operator: Exists
-        effect: NoSchedule
+        - effect: NoExecute
+          key: node.kubernetes.io/not-ready
+          operator: Exists
+          tolerationSeconds: 300
+        - effect: NoExecute
+          key: node.kubernetes.io/unreachable
+          operator: Exists
+          tolerationSeconds: 300
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/master
       containers:
       - name: l2discovery
         imagePullPolicy: Always
         securityContext:
           privileged: true
           runAsUser: 0
-          capabilities:
-            add:
-            - NET_ADMIN
-            - NET_RAW
-            - SYS_CHROOT
-            - FOWNER
         image: quay.io/testnetworkfunction/l2discovery:latest
         resources:
           requests:
