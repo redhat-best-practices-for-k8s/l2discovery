@@ -37,16 +37,16 @@ spec:
         - effect: NoSchedule
           key: node-role.kubernetes.io/master
       containers:
-      - name: l2discovery
-        imagePullPolicy: Always
-        securityContext:
-          privileged: true
-          runAsUser: 0
-        image: quay.io/testnetworkfunction/l2discovery:latest
-        resources:
-          requests:
-            memory: "200Mi"
-            cpu: "100m"
-          limits:
-            memory: "200Mi"
-            cpu: "100m"
+        - name: l2discovery
+          imagePullPolicy: Always
+          securityContext:
+            privileged: true
+            runAsUser: 0
+          image: quay.io/testnetworkfunction/l2discovery:latest
+          resources:
+            requests:
+              memory: "200Mi"
+              cpu: "100m"
+            limits:
+              memory: "200Mi"
+              cpu: "100m"
