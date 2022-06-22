@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -70,7 +71,7 @@ int IfaceBind(int fd, int ifindex)
 		return 1;
 	}
 
-	// promiscuous mode needed for PTP 
+	// promiscuous mode needed for PTP
 	mreq.mr_ifindex = ifindex;
 	mreq.mr_type = PACKET_MR_PROMISC;
 	mreq.mr_alen = 6;
@@ -121,10 +122,15 @@ type Mac struct {
 	Data string
 }
 
+type PCIAddress struct {
+	Device, Function string
+}
+
 type Iface struct {
 	IfName  string
 	IfMac   Mac
 	IfIndex int
+	IfPci   PCIAddress
 }
 
 type Neighbors struct {
@@ -229,7 +235,7 @@ func RecvFrame(iface Iface, macsExist map[string]bool) {
 		recvTimeout           = 2
 		recvBufferSize        = 1024
 		experimentalEthertype = "88b5"
-		ptpEthertype 		  = "88f7"
+		ptpEthertype          = "88f7"
 		allEthPacketTypes     = 0x0300
 	)
 	time.Sleep(time.Second * recvTimeout)
@@ -246,7 +252,7 @@ func RecvFrame(iface Iface, macsExist map[string]bool) {
 	for {
 		_, _, err := syscall.Recvfrom(fd, data, 0)
 		if err != nil {
-
+			continue
 		}
 		var aFrame Frame
 		aFrame.parse(data)
@@ -307,10 +313,30 @@ func getIfs() (macs map[string]Iface, macsExist map[string]bool, err error) {
 		if aIfRaw.Operstate == "UP" &&
 			aIfRaw.Linkinfo.InfoKind == "" &&
 			aIfRaw.LinkType != "loopback" {
-			aIface := Iface{IfName: aIfRaw.Ifname, IfMac: Mac{Data:strings.ToUpper(aIfRaw.Address)}, IfIndex: aIfRaw.Ifindex}
+			address, _ := getPci(aIfRaw.Ifname)
+			aIface := Iface{IfName: aIfRaw.Ifname, IfMac: Mac{Data: strings.ToUpper(aIfRaw.Address)}, IfIndex: aIfRaw.Ifindex, IfPci: address}
 			macs[aIfRaw.Ifname] = aIface
 			macsExist[strings.ToUpper(aIfRaw.Address)] = true
 		}
 	}
 	return macs, macsExist, nil
+}
+
+func getPci(ifaceName string) (aPciAddress PCIAddress, err error) {
+	const (
+		ethtoolBaseCommand = "ethtool -i "
+	)
+	aCommand := ethtoolBaseCommand + ifaceName
+	stdout, stderr, err := RunLocalCommand(aCommand)
+	if err != nil || stderr != "" {
+		return aPciAddress, fmt.Errorf("could not execute ethtool command, err=%s stderr=%s", err, stderr)
+	}
+
+	r := regexp.MustCompile(`(?m)bus-info: (.*)\.(\d+)$`)
+	for _, submatches := range r.FindAllStringSubmatchIndex(stdout, -1) {
+		aPciAddress.Device = string(r.ExpandString([]byte{}, "$1", stdout, submatches))
+		aPciAddress.Function = string(r.ExpandString([]byte{}, "$2", stdout, submatches))
+	}
+
+	return aPciAddress, nil
 }

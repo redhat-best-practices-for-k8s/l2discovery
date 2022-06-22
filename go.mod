@@ -1,4 +1,4 @@
-module github/test-network-function/l2discovery
+module github.com/test-network-function/l2discovery
 
 go 1.18
 
