@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -14,6 +15,7 @@ import (
 	"unsafe"
 
 	"github.com/sirupsen/logrus"
+	"github.com/test-network-function/l2discovery/export"
 )
 
 /*
@@ -70,7 +72,7 @@ int IfaceBind(int fd, int ifindex)
 		return 1;
 	}
 
-	// promiscuous mode needed for PTP 
+	// promiscuous mode needed for PTP
 	mreq.mr_ifindex = ifindex;
 	mreq.mr_type = PACKET_MR_PROMISC;
 	mreq.mr_alen = 6;
@@ -117,39 +119,16 @@ type ipOut struct {
 	LinkNetnsid int `json:"link_netnsid,omitempty"`
 }
 
-type Mac struct {
-	Data string
-}
-
-type Iface struct {
-	IfName  string
-	IfMac   Mac
-	IfIndex int
-}
-
-type Neighbors struct {
-	Local  Iface
-	Remote map[string]bool
-}
 type Frame struct {
-	MacDa Mac
-	MacSa Mac
+	MacDa export.Mac
+	MacSa export.Mac
 	Type  string
 }
 
 var (
-	MacsPerIface map[string]map[string]*Neighbors
+	MacsPerIface map[string]map[string]*export.Neighbors
 	mu           sync.Mutex
 )
-
-func (mac Mac) String() string {
-	return strings.ToUpper(string([]byte(mac.Data)[0:2]) + ":" +
-		string([]byte(mac.Data)[2:4]) + ":" +
-		string([]byte(mac.Data)[4:6]) + ":" +
-		string([]byte(mac.Data)[6:8]) + ":" +
-		string([]byte(mac.Data)[8:10]) + ":" +
-		string([]byte(mac.Data)[10:12]))
-}
 
 func (frame *Frame) parse(rawFrame []byte) {
 	frame.MacDa.Data = hex.EncodeToString(rawFrame[0:6])
@@ -176,7 +155,7 @@ func RunLocalCommand(command string) (outStr, errStr string, err error) {
 
 func main() {
 	macs, macExist, _ := getIfs()
-	MacsPerIface = make(map[string]map[string]*Neighbors)
+	MacsPerIface = make(map[string]map[string]*export.Neighbors)
 	for _, iface := range macs {
 		go RecvFrame(iface, macExist)
 		go sendProbeForever(iface)
@@ -185,7 +164,7 @@ func main() {
 	select {}
 }
 
-func sendProbe(iface Iface) {
+func sendProbe(iface export.Iface) {
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, syscall.ETH_P_ALL)
 	defer syscall.Close(fd)
 	if err != nil {
@@ -224,12 +203,12 @@ func sendProbe(iface Iface) {
 	logrus.Tracef("Sent packet")
 }
 
-func RecvFrame(iface Iface, macsExist map[string]bool) {
+func RecvFrame(iface export.Iface, macsExist map[string]bool) {
 	const (
 		recvTimeout           = 2
 		recvBufferSize        = 1024
 		experimentalEthertype = "88b5"
-		ptpEthertype 		  = "88f7"
+		ptpEthertype          = "88f7"
 		allEthPacketTypes     = 0x0300
 	)
 	time.Sleep(time.Second * recvTimeout)
@@ -246,7 +225,7 @@ func RecvFrame(iface Iface, macsExist map[string]bool) {
 	for {
 		_, _, err := syscall.Recvfrom(fd, data, 0)
 		if err != nil {
-
+			continue
 		}
 		var aFrame Frame
 		aFrame.parse(data)
@@ -255,10 +234,10 @@ func RecvFrame(iface Iface, macsExist map[string]bool) {
 		if strings.EqualFold(aFrame.Type, experimentalEthertype) || strings.EqualFold(aFrame.Type, ptpEthertype) {
 			if _, ok := macsExist[strings.ToUpper(aFrame.MacSa.String())]; !ok {
 				if _, ok := MacsPerIface[aFrame.Type]; !ok {
-					MacsPerIface[aFrame.Type] = make(map[string]*Neighbors)
+					MacsPerIface[aFrame.Type] = make(map[string]*export.Neighbors)
 				}
 				if _, ok := MacsPerIface[aFrame.Type][iface.IfName]; !ok {
-					aNeighbors := Neighbors{Local: iface, Remote: make(map[string]bool)}
+					aNeighbors := export.Neighbors{Local: iface, Remote: make(map[string]bool)}
 					MacsPerIface[aFrame.Type][iface.IfName] = &aNeighbors
 				}
 				MacsPerIface[aFrame.Type][iface.IfName].Remote[aFrame.MacSa.String()] = true
@@ -282,14 +261,14 @@ func PrintLog() {
 	}
 }
 
-func sendProbeForever(iface Iface) {
+func sendProbeForever(iface export.Iface) {
 	for {
 		sendProbe(iface)
 		time.Sleep(time.Second * 1)
 	}
 }
 
-func getIfs() (macs map[string]Iface, macsExist map[string]bool, err error) {
+func getIfs() (macs map[string]export.Iface, macsExist map[string]bool, err error) {
 	const (
 		ifCommand = "ip -details -json link show"
 	)
@@ -297,7 +276,7 @@ func getIfs() (macs map[string]Iface, macsExist map[string]bool, err error) {
 	if err != nil || stderr != "" {
 		return macs, macsExist, fmt.Errorf("could not execute ip command, err=%s stderr=%s", err, stderr)
 	}
-	macs = make(map[string]Iface)
+	macs = make(map[string]export.Iface)
 	macsExist = make(map[string]bool)
 	aIpOut := []*ipOut{}
 	if err := json.Unmarshal([]byte(stdout), &aIpOut); err != nil {
@@ -307,10 +286,30 @@ func getIfs() (macs map[string]Iface, macsExist map[string]bool, err error) {
 		if aIfRaw.Operstate == "UP" &&
 			aIfRaw.Linkinfo.InfoKind == "" &&
 			aIfRaw.LinkType != "loopback" {
-			aIface := Iface{IfName: aIfRaw.Ifname, IfMac: Mac{Data:strings.ToUpper(aIfRaw.Address)}, IfIndex: aIfRaw.Ifindex}
+			address, _ := getPci(aIfRaw.Ifname)
+			aIface := export.Iface{IfName: aIfRaw.Ifname, IfMac: export.Mac{Data: strings.ToUpper(aIfRaw.Address)}, IfIndex: aIfRaw.Ifindex, IfPci: address}
 			macs[aIfRaw.Ifname] = aIface
 			macsExist[strings.ToUpper(aIfRaw.Address)] = true
 		}
 	}
 	return macs, macsExist, nil
+}
+
+func getPci(ifaceName string) (aPciAddress export.PCIAddress, err error) {
+	const (
+		ethtoolBaseCommand = "ethtool -i "
+	)
+	aCommand := ethtoolBaseCommand + ifaceName
+	stdout, stderr, err := RunLocalCommand(aCommand)
+	if err != nil || stderr != "" {
+		return aPciAddress, fmt.Errorf("could not execute ethtool command, err=%s stderr=%s", err, stderr)
+	}
+
+	r := regexp.MustCompile(`(?m)bus-info: (.*)\.(\d+)$`)
+	for _, submatches := range r.FindAllStringSubmatchIndex(stdout, -1) {
+		aPciAddress.Device = string(r.ExpandString([]byte{}, "$1", stdout, submatches))
+		aPciAddress.Function = string(r.ExpandString([]byte{}, "$2", stdout, submatches))
+	}
+
+	return aPciAddress, nil
 }
