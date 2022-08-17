@@ -1,2 +1,10 @@
 .vscode/
 vendor/
+apps/l2dump/vendor/
+l2lib/vendor/
+.vscode/
+vendor/
+apps/l2dump/.vscode/
+l2lib/.vscode/
+l2discovery
+apps/l2dump/l2dump
