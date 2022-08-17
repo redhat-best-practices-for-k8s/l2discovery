@@ -157,6 +157,7 @@ func main() {
 	macs, macExist, _ := getIfs()
 	MacsPerIface = make(map[string]map[string]*export.Neighbors)
 	for _, iface := range macs {
+		RecordAllLocal(iface)
 		go RecvFrame(iface, macExist)
 		go sendProbeForever(iface)
 	}
@@ -245,6 +246,21 @@ func RecvFrame(iface export.Iface, macsExist map[string]bool) {
 		}
 		mu.Unlock()
 	}
+}
+
+func RecordAllLocal(iface export.Iface) {
+	const (
+		localInterfaces = "0000"
+	)
+	mu.Lock()
+	if _, ok := MacsPerIface[localInterfaces]; !ok {
+		MacsPerIface[localInterfaces] = make(map[string]*export.Neighbors)
+	}
+	if _, ok := MacsPerIface[localInterfaces][iface.IfName]; !ok {
+		aNeighbors := export.Neighbors{Local: iface, Remote: make(map[string]bool)}
+		MacsPerIface[localInterfaces][iface.IfName] = &aNeighbors
+	}
+	mu.Unlock()
 }
 
 func PrintLog() {
