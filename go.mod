@@ -4,4 +4,7 @@ go 1.19
 
 require github.com/sirupsen/logrus v1.9.0
 
-require golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
+require (
+	github.com/test-network-function/l2discovery-exports v0.0.0-20220926190927-5f72a82c96d4
+	golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
+)

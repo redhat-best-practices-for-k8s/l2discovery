@@ -15,7 +15,7 @@ import (
 	"unsafe"
 
 	"github.com/sirupsen/logrus"
-	"github.com/test-network-function/l2discovery/export"
+	exports "github.com/test-network-function/l2discovery-exports"
 )
 
 /*
@@ -120,13 +120,13 @@ type ipOut struct {
 }
 
 type Frame struct {
-	MacDa export.Mac
-	MacSa export.Mac
+	MacDa exports.Mac
+	MacSa exports.Mac
 	Type  string
 }
 
 var (
-	MacsPerIface map[string]map[string]*export.Neighbors
+	MacsPerIface map[string]map[string]*exports.Neighbors
 	mu           sync.Mutex
 )
 
@@ -155,7 +155,7 @@ func RunLocalCommand(command string) (outStr, errStr string, err error) {
 
 func main() {
 	macs, macExist, _ := getIfs()
-	MacsPerIface = make(map[string]map[string]*export.Neighbors)
+	MacsPerIface = make(map[string]map[string]*exports.Neighbors)
 	for _, iface := range macs {
 		RecordAllLocal(iface)
 		go RecvFrame(iface, macExist)
@@ -165,7 +165,7 @@ func main() {
 	select {}
 }
 
-func sendProbe(iface export.Iface) {
+func sendProbe(iface exports.Iface) {
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, syscall.ETH_P_ALL)
 	defer syscall.Close(fd)
 	if err != nil {
@@ -204,7 +204,7 @@ func sendProbe(iface export.Iface) {
 	logrus.Tracef("Sent packet")
 }
 
-func RecvFrame(iface export.Iface, macsExist map[string]bool) {
+func RecvFrame(iface exports.Iface, macsExist map[string]bool) {
 	const (
 		recvTimeout           = 2
 		recvBufferSize        = 1024
@@ -235,10 +235,10 @@ func RecvFrame(iface export.Iface, macsExist map[string]bool) {
 		if strings.EqualFold(aFrame.Type, experimentalEthertype) || strings.EqualFold(aFrame.Type, ptpEthertype) {
 			if _, ok := macsExist[strings.ToUpper(aFrame.MacSa.String())]; !ok {
 				if _, ok := MacsPerIface[aFrame.Type]; !ok {
-					MacsPerIface[aFrame.Type] = make(map[string]*export.Neighbors)
+					MacsPerIface[aFrame.Type] = make(map[string]*exports.Neighbors)
 				}
 				if _, ok := MacsPerIface[aFrame.Type][iface.IfName]; !ok {
-					aNeighbors := export.Neighbors{Local: iface, Remote: make(map[string]bool)}
+					aNeighbors := exports.Neighbors{Local: iface, Remote: make(map[string]bool)}
 					MacsPerIface[aFrame.Type][iface.IfName] = &aNeighbors
 				}
 				if MacsPerIface[aFrame.Type][iface.IfName].Local.IfMac != aFrame.MacSa {
@@ -250,16 +250,16 @@ func RecvFrame(iface export.Iface, macsExist map[string]bool) {
 	}
 }
 
-func RecordAllLocal(iface export.Iface) {
+func RecordAllLocal(iface exports.Iface) {
 	const (
 		localInterfaces = "0000"
 	)
 	mu.Lock()
 	if _, ok := MacsPerIface[localInterfaces]; !ok {
-		MacsPerIface[localInterfaces] = make(map[string]*export.Neighbors)
+		MacsPerIface[localInterfaces] = make(map[string]*exports.Neighbors)
 	}
 	if _, ok := MacsPerIface[localInterfaces][iface.IfName]; !ok {
-		aNeighbors := export.Neighbors{Local: iface, Remote: make(map[string]bool)}
+		aNeighbors := exports.Neighbors{Local: iface, Remote: make(map[string]bool)}
 		MacsPerIface[localInterfaces][iface.IfName] = &aNeighbors
 	}
 	mu.Unlock()
@@ -279,41 +279,42 @@ func PrintLog() {
 	}
 }
 
-func sendProbeForever(iface export.Iface) {
+func sendProbeForever(iface exports.Iface) {
 	for {
 		sendProbe(iface)
 		time.Sleep(time.Second * 1)
 	}
 }
 
-func getIfs() (macs map[string]export.Iface, macsExist map[string]bool, err error) {
+func getIfs() (macs map[string]exports.Iface, macsExist map[string]bool, err error) {
 	const (
 		ifCommand = "ip -details -json link show"
 	)
-	stdout, stderr, err := RunLocalCommand(ifCommand)
+	stdout, stderr, err := runLocalCommand(ifCommand)
 	if err != nil || stderr != "" {
 		return macs, macsExist, fmt.Errorf("could not execute ip command, err=%s stderr=%s", err, stderr)
 	}
-	macs = make(map[string]export.Iface)
+	macs = make(map[string]exports.Iface)
 	macsExist = make(map[string]bool)
 	aIPOut := []*ipOut{}
 	if err := json.Unmarshal([]byte(stdout), &aIPOut); err != nil {
 		return macs, macsExist, err
 	}
 	for _, aIfRaw := range aIPOut {
-		if aIfRaw.Linkinfo.InfoKind != "" || // is a virtual interface
-			aIfRaw.LinkType == "loopback" { // is a loopback interface
+		if !(aIfRaw.Linkinfo.InfoKind == "" &&
+			aIfRaw.LinkType != "loopback") {
 			continue
 		}
 		address, _ := getPci(aIfRaw.Ifname)
-		aIface := export.Iface{IfName: aIfRaw.Ifname, IfMac: export.Mac{Data: strings.ToUpper(aIfRaw.Address)}, IfIndex: aIfRaw.Ifindex, IfPci: address}
+		ptpCaps, _ := getPtpCaps(aIfRaw.Ifname, runLocalCommand)
+		aIface := exports.Iface{IfName: aIfRaw.Ifname, IfMac: exports.Mac{Data: strings.ToUpper(aIfRaw.Address)}, IfIndex: aIfRaw.Ifindex, IfPci: address, IfPTPCaps: ptpCaps, IfUp: aIfRaw.Operstate == "UP"}
 		macs[aIfRaw.Ifname] = aIface
 		macsExist[strings.ToUpper(aIfRaw.Address)] = true
 	}
 	return macs, macsExist, nil
 }
 
-func getPci(ifaceName string) (aPciAddress export.PCIAddress, err error) {
+func getPci(ifaceName string) (aPciAddress exports.PCIAddress, err error) {
 	const (
 		ethtoolBaseCommand = "ethtool -i "
 	)
@@ -330,4 +331,51 @@ func getPci(ifaceName string) (aPciAddress export.PCIAddress, err error) {
 	}
 
 	return aPciAddress, nil
+}
+
+func getPtpCaps(ifaceName string, runCmd func(command string) (outStr, errStr string, err error)) (aPTPCaps exports.PTPCaps, err error) {
+	const (
+		ethtoolBaseCommand = "ethtool -T "
+		hwTxString         = "hardware-transmit"
+		hwRxString         = "hardware-receive"
+		hwRawClock         = "hardware-raw-clock"
+	)
+	aCommand := ethtoolBaseCommand + ifaceName
+	stdout, stderr, err := runCmd(aCommand)
+	if err != nil || stderr != "" {
+		return aPTPCaps, fmt.Errorf("could not execute "+ethtoolBaseCommand+" command, err=%s stderr=%s", err, stderr)
+	}
+
+	r := regexp.MustCompile(`(?m)(` + hwTxString + `)|(` + hwRxString + `)|(` + hwRawClock + `)$`)
+	for _, submatches := range r.FindAllStringSubmatchIndex(stdout, -1) {
+		aString := string(r.ExpandString([]byte{}, "$1", stdout, submatches))
+		if !aPTPCaps.HwTx {
+			aPTPCaps.HwTx = aString == hwTxString
+		}
+
+		aString = string(r.ExpandString([]byte{}, "$2", stdout, submatches))
+		if !aPTPCaps.HwRx {
+			aPTPCaps.HwRx = aString == hwRxString
+		}
+
+		aString = string(r.ExpandString([]byte{}, "$3", stdout, submatches))
+		if !aPTPCaps.HwRawClock {
+			aPTPCaps.HwRawClock = aString == hwRawClock
+		}
+	}
+	return aPTPCaps, nil
+}
+
+func runLocalCommand(command string) (outStr, errStr string, err error) {
+	cmd := exec.Command("sh", "-c", command)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err = cmd.Run()
+	if err != nil {
+		return "", "", err
+	}
+	outStr, errStr = stdout.String(), stderr.String()
+	logrus.Tracef("Command %s, STDERR: %s, STDOUT: %s", cmd.String(), errStr, outStr)
+	return outStr, errStr, err
 }
