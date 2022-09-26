@@ -177,7 +177,7 @@ func sendProbe(iface export.Iface) {
 		panic(err)
 	}
 	C.IfaceBind(C.int(fd), C.int(iface.IfIndex))
-	ether := new(C.EthernetHeader)
+	ether := new(C.EthernetHeader) //nolint:staticcheck
 	size := uint(unsafe.Sizeof(*ether))
 	logrus.Tracef("Size : %d", size)
 	interf, err := net.InterfaceByName(iface.IfName)
@@ -187,9 +187,9 @@ func sendProbe(iface export.Iface) {
 	}
 	logrus.Tracef("Interface hw address: %s", iface.IfMac)
 
-	iface_cstr := C.CString(iface.IfMac.Data)
+	ifaceCstr := C.CString(iface.IfMac.Data)
 
-	packet := C.GoBytes(unsafe.Pointer(C.CreateProbe(iface_cstr)), C.int(size))
+	packet := C.GoBytes(unsafe.Pointer(C.CreateProbe(ifaceCstr)), C.int(size))
 
 	// Send the packet
 	var addr syscall.SockaddrLinklayer
@@ -241,7 +241,9 @@ func RecvFrame(iface export.Iface, macsExist map[string]bool) {
 					aNeighbors := export.Neighbors{Local: iface, Remote: make(map[string]bool)}
 					MacsPerIface[aFrame.Type][iface.IfName] = &aNeighbors
 				}
-				MacsPerIface[aFrame.Type][iface.IfName].Remote[aFrame.MacSa.String()] = true
+				if MacsPerIface[aFrame.Type][iface.IfName].Local.IfMac != aFrame.MacSa {
+					MacsPerIface[aFrame.Type][iface.IfName].Remote[aFrame.MacSa.String()] = true
+				}
 			}
 		}
 		mu.Unlock()
@@ -294,19 +296,19 @@ func getIfs() (macs map[string]export.Iface, macsExist map[string]bool, err erro
 	}
 	macs = make(map[string]export.Iface)
 	macsExist = make(map[string]bool)
-	aIpOut := []*ipOut{}
-	if err := json.Unmarshal([]byte(stdout), &aIpOut); err != nil {
+	aIPOut := []*ipOut{}
+	if err := json.Unmarshal([]byte(stdout), &aIPOut); err != nil {
 		return macs, macsExist, err
 	}
-	for _, aIfRaw := range aIpOut {
-		if aIfRaw.Operstate == "UP" &&
-			aIfRaw.Linkinfo.InfoKind == "" &&
-			aIfRaw.LinkType != "loopback" {
-			address, _ := getPci(aIfRaw.Ifname)
-			aIface := export.Iface{IfName: aIfRaw.Ifname, IfMac: export.Mac{Data: strings.ToUpper(aIfRaw.Address)}, IfIndex: aIfRaw.Ifindex, IfPci: address}
-			macs[aIfRaw.Ifname] = aIface
-			macsExist[strings.ToUpper(aIfRaw.Address)] = true
+	for _, aIfRaw := range aIPOut {
+		if aIfRaw.Linkinfo.InfoKind != "" || // is a virtual interface
+			aIfRaw.LinkType == "loopback" { // is a loopback interface
+			continue
 		}
+		address, _ := getPci(aIfRaw.Ifname)
+		aIface := export.Iface{IfName: aIfRaw.Ifname, IfMac: export.Mac{Data: strings.ToUpper(aIfRaw.Address)}, IfIndex: aIfRaw.Ifindex, IfPci: address}
+		macs[aIfRaw.Ifname] = aIface
+		macsExist[strings.ToUpper(aIfRaw.Address)] = true
 	}
 	return macs, macsExist, nil
 }
