@@ -165,7 +165,7 @@ func main() {
 	select {}
 }
 
-func sendProbe(iface exports.Iface) {
+func sendProbe(iface *exports.Iface) {
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, syscall.ETH_P_ALL)
 	defer syscall.Close(fd)
 	if err != nil {
@@ -204,7 +204,7 @@ func sendProbe(iface exports.Iface) {
 	logrus.Tracef("Sent packet")
 }
 
-func RecvFrame(iface exports.Iface, macsExist map[string]bool) {
+func RecvFrame(iface *exports.Iface, macsExist map[string]bool) {
 	const (
 		recvTimeout           = 2
 		recvBufferSize        = 1024
@@ -238,7 +238,7 @@ func RecvFrame(iface exports.Iface, macsExist map[string]bool) {
 					MacsPerIface[aFrame.Type] = make(map[string]*exports.Neighbors)
 				}
 				if _, ok := MacsPerIface[aFrame.Type][iface.IfName]; !ok {
-					aNeighbors := exports.Neighbors{Local: iface, Remote: make(map[string]bool)}
+					aNeighbors := exports.Neighbors{Local: *iface, Remote: make(map[string]bool)}
 					MacsPerIface[aFrame.Type][iface.IfName] = &aNeighbors
 				}
 				if MacsPerIface[aFrame.Type][iface.IfName].Local.IfMac != aFrame.MacSa {
@@ -250,7 +250,7 @@ func RecvFrame(iface exports.Iface, macsExist map[string]bool) {
 	}
 }
 
-func RecordAllLocal(iface exports.Iface) {
+func RecordAllLocal(iface *exports.Iface) {
 	const (
 		localInterfaces = "0000"
 	)
@@ -259,7 +259,7 @@ func RecordAllLocal(iface exports.Iface) {
 		MacsPerIface[localInterfaces] = make(map[string]*exports.Neighbors)
 	}
 	if _, ok := MacsPerIface[localInterfaces][iface.IfName]; !ok {
-		aNeighbors := exports.Neighbors{Local: iface, Remote: make(map[string]bool)}
+		aNeighbors := exports.Neighbors{Local: *iface, Remote: make(map[string]bool)}
 		MacsPerIface[localInterfaces][iface.IfName] = &aNeighbors
 	}
 	mu.Unlock()
@@ -279,14 +279,14 @@ func PrintLog() {
 	}
 }
 
-func sendProbeForever(iface exports.Iface) {
+func sendProbeForever(iface *exports.Iface) {
 	for {
 		sendProbe(iface)
 		time.Sleep(time.Second * 1)
 	}
 }
 
-func getIfs() (macs map[string]exports.Iface, macsExist map[string]bool, err error) {
+func getIfs() (macs map[string]*exports.Iface, macsExist map[string]bool, err error) {
 	const (
 		ifCommand = "ip -details -json link show"
 	)
@@ -294,7 +294,7 @@ func getIfs() (macs map[string]exports.Iface, macsExist map[string]bool, err err
 	if err != nil || stderr != "" {
 		return macs, macsExist, fmt.Errorf("could not execute ip command, err=%s stderr=%s", err, stderr)
 	}
-	macs = make(map[string]exports.Iface)
+	macs = make(map[string]*exports.Iface)
 	macsExist = make(map[string]bool)
 	aIPOut := []*ipOut{}
 	if err := json.Unmarshal([]byte(stdout), &aIPOut); err != nil {
@@ -308,7 +308,7 @@ func getIfs() (macs map[string]exports.Iface, macsExist map[string]bool, err err
 		address, _ := getPci(aIfRaw.Ifname)
 		ptpCaps, _ := getPtpCaps(aIfRaw.Ifname, runLocalCommand)
 		aIface := exports.Iface{IfName: aIfRaw.Ifname, IfMac: exports.Mac{Data: strings.ToUpper(aIfRaw.Address)}, IfIndex: aIfRaw.Ifindex, IfPci: address, IfPTPCaps: ptpCaps, IfUp: aIfRaw.Operstate == "UP"}
-		macs[aIfRaw.Ifname] = aIface
+		macs[aIfRaw.Ifname] = &aIface
 		macsExist[strings.ToUpper(aIfRaw.Address)] = true
 	}
 	return macs, macsExist, nil
@@ -316,9 +316,12 @@ func getIfs() (macs map[string]exports.Iface, macsExist map[string]bool, err err
 
 func getPci(ifaceName string) (aPciAddress exports.PCIAddress, err error) {
 	const (
-		ethtoolBaseCommand = "ethtool -i "
+		ethtoolBaseCommand  = "ethtool -i"
+		lscpiCommand        = "lspci -s"
+		newLineCharacter    = "\n"
+		emptySpaceSeparator = " "
 	)
-	aCommand := ethtoolBaseCommand + ifaceName
+	aCommand := fmt.Sprintf("%s %s", ethtoolBaseCommand, ifaceName)
 	stdout, stderr, err := RunLocalCommand(aCommand)
 	if err != nil || stderr != "" {
 		return aPciAddress, fmt.Errorf("could not execute ethtool command, err=%s stderr=%s", err, stderr)
@@ -328,6 +331,18 @@ func getPci(ifaceName string) (aPciAddress exports.PCIAddress, err error) {
 	for _, submatches := range r.FindAllStringSubmatchIndex(stdout, -1) {
 		aPciAddress.Device = string(r.ExpandString([]byte{}, "$1", stdout, submatches))
 		aPciAddress.Function = string(r.ExpandString([]byte{}, "$2", stdout, submatches))
+	}
+
+	aCommand = fmt.Sprintf("%s %s.%s", lscpiCommand, aPciAddress.Device, aPciAddress.Function)
+	stdout, stderr, err = RunLocalCommand(aCommand)
+	if err != nil || stderr != "" {
+		return aPciAddress, fmt.Errorf("could not execute lspci command, err=%s stderr=%s", err, stderr)
+	}
+	stdout = strings.TrimSuffix(stdout, newLineCharacter)
+	spaceIndex := strings.Index(stdout, emptySpaceSeparator)
+	if spaceIndex != -1 {
+		description := stdout[spaceIndex+1:]
+		aPciAddress.Description = description
 	}
 
 	return aPciAddress, nil
