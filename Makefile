@@ -17,7 +17,7 @@ image:
 	./scripts/image.sh
 launch:
 	./scripts/launch.sh
-exe:
+build:
 	go build l2discovery.go
 # Install golangci-lint	
 install-lint:
