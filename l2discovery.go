@@ -154,6 +154,7 @@ func RunLocalCommand(command string) (outStr, errStr string, err error) {
 }
 
 func main() {
+	logrus.SetLevel(logrus.FatalLevel)
 	macs, macExist, _ := getIfs()
 	MacsPerIface = make(map[string]map[string]*exports.Neighbors)
 	for _, iface := range macs {
@@ -169,7 +170,7 @@ func sendProbe(iface *exports.Iface) {
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, syscall.ETH_P_ALL)
 	defer syscall.Close(fd)
 	if err != nil {
-		fmt.Println("Error: " + err.Error())
+		logrus.Errorf("Error: " + err.Error())
 		return
 	}
 	err = syscall.BindToDevice(fd, iface.IfName)
@@ -182,7 +183,7 @@ func sendProbe(iface *exports.Iface) {
 	logrus.Tracef("Size : %d", size)
 	interf, err := net.InterfaceByName(iface.IfName)
 	if err != nil {
-		fmt.Println("Could not find " + iface.IfName + " interface")
+		logrus.Errorf("Could not find " + iface.IfName + " interface")
 		return
 	}
 	logrus.Tracef("Interface hw address: %s", iface.IfMac)
@@ -199,7 +200,7 @@ func sendProbe(iface *exports.Iface) {
 	err = syscall.Sendto(fd, packet, 0, &addr)
 
 	if err != nil {
-		fmt.Println("Error: ", err)
+		logrus.Errorf("error: %s", err)
 	}
 	logrus.Tracef("Sent packet")
 }
@@ -271,8 +272,9 @@ func PrintLog() {
 		mu.Lock()
 		aString, err := json.Marshal(MacsPerIface)
 		if err != nil {
-			fmt.Println("Cannot marshall MacsPerIface")
+			logrus.Errorf("Cannot marshall MacsPerIface")
 		}
+		// Only log printed
 		fmt.Printf("JSON_REPORT%s\n", string(aString))
 		mu.Unlock()
 		time.Sleep(time.Second * logPrintPeriod)
