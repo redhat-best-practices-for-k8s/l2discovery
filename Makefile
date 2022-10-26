@@ -9,7 +9,7 @@ else
 endif
 
 # Variables
-GOLANGCI_VERSION=v1.50.0
+GOLANGCI_VERSION=v1.50.1
 
 lint:
 	golangci-lint run --timeout 10m0s
