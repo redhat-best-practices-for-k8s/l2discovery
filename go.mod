@@ -1,6 +1,6 @@
 module github.com/test-network-function/l2discovery
 
-go 1.19
+go 1.20
 
 require github.com/sirupsen/logrus v1.9.0
 
