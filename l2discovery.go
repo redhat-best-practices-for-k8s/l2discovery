@@ -283,8 +283,8 @@ func PrintLog() {
 
 func sendProbeForever(iface *exports.Iface) {
 	for {
-		sendProbe(iface)
 		time.Sleep(time.Second * 1)
+		sendProbe(iface)
 	}
 }
 
