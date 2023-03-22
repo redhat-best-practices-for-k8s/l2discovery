@@ -282,7 +282,10 @@ func PrintLog() {
 }
 
 func sendProbeForever(iface *exports.Iface) {
-	for {
+	// sending probe frames mess with link aggregation. After sending a maximum number of probes for a given
+	// interface, stop forever. Discovery should be complete by then.
+	const maxProbes = 5
+	for i := 0; i < maxProbes; i++ {
 		time.Sleep(time.Second * 1)
 		sendProbe(iface)
 	}
