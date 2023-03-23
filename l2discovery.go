@@ -85,6 +85,10 @@ int IfaceBind(int fd, int ifindex)
 */
 import "C"
 
+const (
+	bondSlave = "bond"
+)
+
 type ipOut struct {
 	Ifindex          int           `json:"ifindex"`
 	Ifname           string        `json:"ifname"`
@@ -114,6 +118,10 @@ type ipOut struct {
 	Linkinfo         struct {
 		InfoSlaveKind string `json:"info_slave_kind"`
 		InfoKind      string `json:"info_kind"`
+		InfoSlaveData struct {
+			State     string `json:"state"`
+			MiiStatus string `json:"mii_status"`
+		} `json:"info_slave_data"`
 	} `json:"linkinfo,omitempty"`
 	LinkIndex   int `json:"link_index,omitempty"`
 	LinkNetnsid int `json:"link_netnsid,omitempty"`
@@ -173,7 +181,16 @@ func sendProbe(iface *exports.Iface) {
 		logrus.Errorf("Error: " + err.Error())
 		return
 	}
-	err = syscall.BindToDevice(fd, iface.IfName)
+	// for Link aggregation interfaces, use the link aggregated interface to send the probe packets
+	// The bond interface will carry it in a way so as to not generate traffic loops. As a result,
+	// only the primary port, responsible to carry broadcast and multicast traffic will be discovered by
+	// l2discovery
+	senderIface := iface.IfName
+	if iface.IfSlaveType == bondSlave {
+		senderIface = iface.IfMaster
+	}
+
+	err = syscall.BindToDevice(fd, senderIface)
 	if err != nil {
 		panic(err)
 	}
@@ -181,9 +198,9 @@ func sendProbe(iface *exports.Iface) {
 	ether := new(C.EthernetHeader) //nolint:staticcheck
 	size := uint(unsafe.Sizeof(*ether))
 	logrus.Tracef("Size : %d", size)
-	interf, err := net.InterfaceByName(iface.IfName)
+	interf, err := net.InterfaceByName(senderIface)
 	if err != nil {
-		logrus.Errorf("Could not find " + iface.IfName + " interface")
+		logrus.Errorf("Could not find " + senderIface + " interface")
 		return
 	}
 	logrus.Tracef("Interface hw address: %s", iface.IfMac)
@@ -284,7 +301,7 @@ func PrintLog() {
 func sendProbeForever(iface *exports.Iface) {
 	// sending probe frames mess with link aggregation. After sending a maximum number of probes for a given
 	// interface, stop forever. Discovery should be complete by then.
-	const maxProbes = 5
+	const maxProbes = 10
 	for i := 0; i < maxProbes; i++ {
 		time.Sleep(time.Second * 1)
 		sendProbe(iface)
@@ -307,12 +324,19 @@ func getIfs() (macs map[string]*exports.Iface, macsExist map[string]bool, err er
 	}
 	for _, aIfRaw := range aIPOut {
 		if !(aIfRaw.Linkinfo.InfoKind == "" &&
-			aIfRaw.LinkType != "loopback") {
+			aIfRaw.LinkType != "loopback" &&
+			(aIfRaw.Linkinfo.InfoSlaveKind == bondSlave || aIfRaw.Linkinfo.InfoSlaveKind == "")) {
 			continue
 		}
 		address, _ := getPci(aIfRaw.Ifname)
 		ptpCaps, _ := getPtpCaps(aIfRaw.Ifname, runLocalCommand)
-		aIface := exports.Iface{IfName: aIfRaw.Ifname, IfMac: exports.Mac{Data: strings.ToUpper(aIfRaw.Address)}, IfIndex: aIfRaw.Ifindex, IfPci: address, IfPTPCaps: ptpCaps, IfUp: aIfRaw.Operstate == "UP"}
+		aIface := exports.Iface{IfName: aIfRaw.Ifname,
+			IfMac:   exports.Mac{Data: strings.ToUpper(aIfRaw.Address)},
+			IfIndex: aIfRaw.Ifindex,
+			IfPci:   address, IfPTPCaps: ptpCaps,
+			IfUp:        aIfRaw.Operstate == "UP",
+			IfMaster:    aIfRaw.Master,
+			IfSlaveType: aIfRaw.Linkinfo.InfoSlaveKind}
 		macs[aIfRaw.Ifname] = &aIface
 		macsExist[strings.ToUpper(aIfRaw.Address)] = true
 	}
