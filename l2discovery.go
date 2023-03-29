@@ -168,7 +168,9 @@ func main() {
 	for _, iface := range macs {
 		RecordAllLocal(iface)
 		go RecvFrame(iface, macExist)
-		go sendProbeForever(iface)
+		if iface.IfSlaveType != bondSlave {
+			go sendProbeForever(iface)
+		}
 	}
 	go PrintLog()
 	select {}
@@ -323,9 +325,8 @@ func getIfs() (macs map[string]*exports.Iface, macsExist map[string]bool, err er
 		return macs, macsExist, err
 	}
 	for _, aIfRaw := range aIPOut {
-		if !(aIfRaw.Linkinfo.InfoKind == "" &&
-			aIfRaw.LinkType != "loopback" &&
-			(aIfRaw.Linkinfo.InfoSlaveKind == bondSlave || aIfRaw.Linkinfo.InfoSlaveKind == "")) {
+		if aIfRaw.LinkType == "loopback" ||
+			aIfRaw.Linkinfo.InfoKind != "" {
 			continue
 		}
 		address, _ := getPci(aIfRaw.Ifname)
