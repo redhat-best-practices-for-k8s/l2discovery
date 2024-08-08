@@ -65,7 +65,7 @@ jobs:
           ref: ${{ github.sha }}
 
       - name: Authenticate against Quay.io
-        if: ${{ github.ref == 'refs/heads/main' && github.repository_owner == 'test-network-function' }}
+        if: ${{ github.ref == 'refs/heads/main' && github.repository_owner == 'redhat-best-practices-for-k8s' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -75,5 +75,5 @@ jobs:
           password: ${{ secrets.QUAY_ROBOT_TOKEN }}
 
       - name: Build and push image
-        if: ${{ github.ref == 'refs/heads/main' && github.repository_owner == 'test-network-function' }}
+        if: ${{ github.ref == 'refs/heads/main' && github.repository_owner == 'redhat-best-practices-for-k8s' }}
         run: ./scripts/image.sh

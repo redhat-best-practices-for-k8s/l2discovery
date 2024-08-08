@@ -14,8 +14,8 @@ import (
 	"time"
 	"unsafe"
 
+	exports "github.com/redhat-best-practices-for-k8s/l2discovery-exports"
 	"github.com/sirupsen/logrus"
-	exports "github.com/test-network-function/l2discovery-exports"
 )
 
 /*
@@ -321,7 +321,8 @@ func getIfs() (macs map[string]*exports.Iface, macsExist map[string]bool, err er
 	macs = make(map[string]*exports.Iface)
 	macsExist = make(map[string]bool)
 	aIPOut := []*ipOut{}
-	if err := json.Unmarshal([]byte(stdout), &aIPOut); err != nil {
+	err = json.Unmarshal([]byte(stdout), &aIPOut)
+	if err != nil {
 		return macs, macsExist, err
 	}
 	for _, aIfRaw := range aIPOut {
