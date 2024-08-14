@@ -17,7 +17,6 @@ import (
 	exports "github.com/redhat-best-practices-for-k8s/l2discovery-exports"
 	"github.com/sirupsen/logrus"
 )
-
 /*
 #include <stdint.h>
 #include <stdlib.h>
@@ -348,9 +347,10 @@ func getIfs() (macs map[string]*exports.Iface, macsExist map[string]bool, err er
 func getPci(ifaceName string) (aPciAddress exports.PCIAddress, err error) {
 	const (
 		ethtoolBaseCommand  = "ethtool -i"
-		lscpiCommand        = "lspci -s"
+		lscpiCommand        = "lspci -vv -s"
 		newLineCharacter    = "\n"
 		emptySpaceSeparator = " "
+		subsystemString     = "Subsystem: "
 	)
 	aCommand := fmt.Sprintf("%s %s", ethtoolBaseCommand, ifaceName)
 	stdout, stderr, err := RunLocalCommand(aCommand)
@@ -360,6 +360,7 @@ func getPci(ifaceName string) (aPciAddress exports.PCIAddress, err error) {
 
 	r := regexp.MustCompile(`(?m)bus-info: (.*)\.(\d+)$`)
 	for _, submatches := range r.FindAllStringSubmatchIndex(stdout, -1) {
+
 		aPciAddress.Device = string(r.ExpandString([]byte{}, "$1", stdout, submatches))
 		aPciAddress.Function = string(r.ExpandString([]byte{}, "$2", stdout, submatches))
 	}
@@ -369,14 +370,32 @@ func getPci(ifaceName string) (aPciAddress exports.PCIAddress, err error) {
 	if err != nil || stderr != "" {
 		return aPciAddress, fmt.Errorf("could not execute lspci command, err=%s stderr=%s", err, stderr)
 	}
-	stdout = strings.TrimSuffix(stdout, newLineCharacter)
-	spaceIndex := strings.Index(stdout, emptySpaceSeparator)
-	if spaceIndex != -1 {
-		description := stdout[spaceIndex+1:]
-		aPciAddress.Description = description
+
+	description, subsystem, err := parseLspci(stdout)
+	if err != nil {
+		return aPciAddress, fmt.Errorf("could not parse lspci output, err=%s", err)
 	}
+	aPciAddress.Description = description
+	aPciAddress.Subsystem = subsystem
 
 	return aPciAddress, nil
+}
+
+func parseLspci(output string) (string, string, error) {
+	const regex = `(?m)[^\s]*\s*(.*)$(?m)\s+Subsystem:\s*(.*)$`
+
+	// Compile the regular expression
+	re := regexp.MustCompile(regex)
+
+	// Find all matches
+	matches := re.FindAllStringSubmatch(output, -1)
+	var description, subsystem string
+	if len(matches) < 1 {
+		return description, subsystem, fmt.Errorf("could not parse lspci output")
+	}
+	description=matches[0][1]
+	subsystem=matches[0][2]
+	return description, subsystem, nil
 }
 
 func getPtpCaps(ifaceName string, runCmd func(command string) (outStr, errStr string, err error)) (aPTPCaps exports.PTPCaps, err error) {
