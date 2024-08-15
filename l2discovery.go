@@ -14,9 +14,10 @@ import (
 	"time"
 	"unsafe"
 
-	exports "github.com/redhat-best-practices-for-k8s/l2discovery-exports"
+	exports "github.com/redhat-cne/l2discovery-exports"
 	"github.com/sirupsen/logrus"
 )
+
 /*
 #include <stdint.h>
 #include <stdlib.h>
@@ -393,8 +394,8 @@ func parseLspci(output string) (string, string, error) {
 	if len(matches) < 1 {
 		return description, subsystem, fmt.Errorf("could not parse lspci output")
 	}
-	description=matches[0][1]
-	subsystem=matches[0][2]
+	description = matches[0][1]
+	subsystem = matches[0][2]
 	return description, subsystem, nil
 }
 
