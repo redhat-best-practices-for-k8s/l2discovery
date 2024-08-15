@@ -12,6 +12,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	//nolint:gocritic
 	"unsafe"
 
 	exports "github.com/redhat-cne/l2discovery-exports"
@@ -83,7 +85,7 @@ int IfaceBind(int fd, int ifindex)
     return 0;
 }
 */
-import "C"
+import "C" //nolint:gocritic
 
 const (
 	bondSlave = "bond"
@@ -197,7 +199,7 @@ func sendProbe(iface *exports.Iface) {
 		panic(err)
 	}
 	C.IfaceBind(C.int(fd), C.int(iface.IfIndex))
-	ether := new(C.EthernetHeader) //nolint:staticcheck
+	ether := new(C.EthernetHeader)
 	size := uint(unsafe.Sizeof(*ether))
 	logrus.Tracef("Size : %d", size)
 	interf, err := net.InterfaceByName(senderIface)
@@ -382,15 +384,15 @@ func getPci(ifaceName string) (aPciAddress exports.PCIAddress, err error) {
 	return aPciAddress, nil
 }
 
-func parseLspci(output string) (string, string, error) {
-	const regex = `(?m)[^\s]*\s*(.*)$(?m)\s+Subsystem:\s*(.*)$`
+func parseLspci(output string) (description, subsystem string, err error) {
+	const regex = `(?m)\S*\s*(.*)$(?m)\s+Subsystem:\s*(.*)$`
 
 	// Compile the regular expression
-	re := regexp.MustCompile(regex)
+	re := regexp.MustCompile(regex) //nolint:gocritic
 
 	// Find all matches
 	matches := re.FindAllStringSubmatch(output, -1)
-	var description, subsystem string
+
 	if len(matches) < 1 {
 		return description, subsystem, fmt.Errorf("could not parse lspci output")
 	}

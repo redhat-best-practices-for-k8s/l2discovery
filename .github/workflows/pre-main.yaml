@@ -1,0 +1,88 @@
+name: Test Incoming Changes
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TERM: xterm-color
+  CM_BIN: /usr/local/bin/checkmake
+  CM_URL_LINUX: https://github.com/mrtazz/checkmake/releases/download/0.2.2/checkmake-0.2.2.linux.amd64 # yamllint disable-line
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    name: Run Linters, Vet and unit tests
+    runs-on: ubuntu-22.04
+    env:
+      SHELL: /bin/bash
+
+    steps:
+      - name: Set up Go 1.22
+        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+        with:
+          go-version: 1.22.5
+
+      - name: Disable default go problem matcher
+        run: echo "::remove-matcher owner=go::"
+
+      - name: Check out code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Extract dependent Pull Requests
+        uses: depends-on/depends-on-action@9e8a61fce18b15281e831f1bba0e14c71d1e1f46 # main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install checkmake
+        run: |
+          curl --location --output $CM_BIN --silent $CM_URL_LINUX
+          chmod +x $CM_BIN
+
+      - name: Install Shfmt
+        uses: mfinelli/setup-shfmt@031e887e39d899d773a7e9b6dd6472c2c23ff50d # v3.0.1
+
+      - name: Golangci-lint
+        uses: golangci/golangci-lint-action@aaa42aa0628b4ae2578232a66b541047968fac86 # v6.1.0
+        with:
+          version: v1.59
+          args: --timeout 10m0s
+
+      - name: Checkmake
+        run: checkmake --config=.checkmake Makefile
+
+      - name: Hadolint
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
+        with:
+          dockerfile: Dockerfile
+          recursive: true
+
+      - name: Shfmt
+        run: shfmt -d scripts
+
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@00b27aa7cb85167568cb48a3838b75f4265f2bca # master
+
+      - name: Go vet
+        run: make vet
+
+      - name: Run Build
+        run: make build
+        env:
+          SHELL: /bin/bash
+
+      - name: Run Tests
+        run: make test
+        env:
+          SHELL: /bin/bash

@@ -2,10 +2,8 @@ linters-settings:
   dupl:
     threshold: 100
   funlen:
-    lines: 50
-    statements: 30
-  gci:
-    local-prefixes: github.com/golangci/golangci-lint
+    lines: 60
+    statements: 45
   goconst:
     min-len: 4
     min-occurrences: 2
@@ -19,16 +17,13 @@ linters-settings:
     disabled-checks:
       - whyNoLint
   gocyclo:
-    min-complexity: 15
-  goimports:
-    local-prefixes: github.com/golangci/golangci-lint
-  gomnd:
+    min-complexity: 20
+  mnd:
     settings:
       mnd:
-        # don't include the "operation" and "assign"
+        # do not include the "operation" and "assign"
         checks: argument,case,condition,return
   govet:
-    check-shadowing: true
     settings:
       printf:
         funcs:
@@ -43,17 +38,17 @@ linters-settings:
   nolintlint:
     allow-leading-space: false # disallow leading spaces. A space means the //nolint comment shows in `godoc` output.
     allow-unused: false # report any unused nolint directives
-    require-explanation: false # don't require an explanation for nolint directives
+    require-explanation: false # do not require an explanation for nolint directives
     require-specific: true # require nolint directives to be specific about which linter is being skipped
+  exhaustive:
+    default-signifies-exhaustive: true
 linters:
   # please, do not use `enable-all`: it's deprecated and will be removed soon.
   # inverted configuration with `enable-all` and `disable` is not scalable during updates of golangci-lint
   disable-all: true
   enable:
     - bodyclose
-    - depguard
     - dogsled
-    - dupl
     - errcheck
     - exhaustive
     - exportloopref
@@ -63,7 +58,7 @@ linters:
     - gocyclo
     - gofmt
     - goimports
-    - gomnd
+    - mnd
     - goprintffuncname
     - gosec
     - gosimple
@@ -71,19 +66,19 @@ linters:
     - ineffassign
     - lll
     - misspell
-    - nakedret
-    - noctx
     - nolintlint
-    - revive
     - rowserrcheck
     - staticcheck
     - stylecheck
+    - typecheck
     - unconvert
     - unparam
     - unused
     - whitespace
-  # don't enable:
+  # do not enable:
   # - asciicheck
+  # - depguard
+  # - dupl
   # - gochecknoglobals
   # - gochecknoinits
   # - gocognit
@@ -91,22 +86,37 @@ linters:
   # - godox
   # - goerr113
   # - maligned
+  # - nakedret
   # - nestif
+  # - noctx
   # - prealloc
+  # - revive
   # - exportloopref
   # - structcheck
   # - testpackage
-  # - typecheck
   # - wsl
 issues:
   # Excluding configuration per-path, per-linter, per-text and per-source
   exclude-rules:
-    # Ignore magic numbers and inline strings in tests.
+    # Ignore magic numbers, inline strings and function length in tests.
     - path: _test\.go
       linters:
-        - gomnd
+        - mnd
         - goconst
-    # Ignore line length for string assignments (don't try and wrap regex definitions)
+        - funlen
+    - path: config/config.go
+      linters:
+        - mnd
+    - path: _scaling.go
+      linters:
+        - gocritic
+    - path: hugepages.go
+      linters:
+        - mnd
+    - path: scheduling.go
+      linters:
+        - mnd
+    # Ignore line length for string assignments (do not try and wrap regex definitions)
     - linters:
         - lll
       source: "^(.*= (\".*\"|`.*`))$"
@@ -120,6 +130,6 @@ issues:
 # golangci.com configuration
 # https://github.com/golangci/golangci/wiki/Configuration
 service:
-  golangci-lint-version: 1.54.x # use the fixed version to not introduce new linters unexpectedly
+  golangci-lint-version: 1.59.x # use the fixed version to not introduce new linters unexpectedly
   prepare:
     - echo "here I can run custom commands, but no preparation needed for this repo"

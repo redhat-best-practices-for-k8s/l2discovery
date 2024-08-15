@@ -1,5 +1,7 @@
 GO_PACKAGES=$(shell go list ./... | grep -v vendor)
 
+.PHONY: all clean test build
+
 # Get default value of $GOBIN if not explicitly set
 GO_PATH=$(shell go env GOPATH)
 ifeq (,$(shell go env GOBIN))

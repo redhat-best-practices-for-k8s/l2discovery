@@ -7,20 +7,22 @@ func Test_parseLspci(t *testing.T) {
 		output string
 	}
 	tests := []struct {
-		name string
-		args args
-		exDesc string
+		name        string
+		args        args
+		exDesc      string
 		exSubsystem string
-		parseErr bool
+		parseErr    bool
 	}{
 		{
 			name: "ok",
 			args: args{
-				output: "ca:00.0 Ethernet controller: Intel Corporation Ethernet Controller E810-C for SFP (rev 02)\nSubsystem: Intel Corporation Ethernet Network Adapter E810-XXV-4T\nControl: I/O- Mem+ BusMaster+ SpecCycle- MemWINV- VGASnoop- ParErr- Stepping- SERR- FastB2B- DisINTx+\n",
+				output: "ca:00.0 Ethernet controller: Intel Corporation Ethernet Controller E810-C for SFP (rev 02)\n" +
+					"Subsystem: Intel Corporation Ethernet Network Adapter E810-XXV-4T\nControl: I/O- Mem+ BusMaster+ " +
+					"SpecCycle- MemWINV- VGASnoop- ParErr- Stepping- SERR- FastB2B- DisINTx+\n",
 			},
-			exDesc: "Ethernet controller: Intel Corporation Ethernet Controller E810-C for SFP (rev 02)",
+			exDesc:      "Ethernet controller: Intel Corporation Ethernet Controller E810-C for SFP (rev 02)",
 			exSubsystem: "Intel Corporation Ethernet Network Adapter E810-XXV-4T",
-			parseErr: false,
+			parseErr:    false,
 		},
 	}
 	for _, tt := range tests {
