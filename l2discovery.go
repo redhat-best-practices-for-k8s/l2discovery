@@ -160,7 +160,23 @@ func (frame *Frame) String() string {
 }
 
 func runLocalCommand(command string) (outStr, errStr string, err error) {
+	const chrootHost = "chroot /host "
+	if strings.Contains(command, chrootHost) {
+		noChroot, found := strings.CutPrefix(command, chrootHost)
+		if !found {
+			return outStr, errStr, fmt.Errorf("failed to find chroot prefix in command")
+		}
+		command = noChroot
+	}
 	cmd := exec.Command("sh", "-c", command)
+	if strings.Contains(command, chrootHost) {
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Chroot: "/host",
+			// ensure we stay as root
+			Credential: &syscall.Credential{Uid: 0, Gid: 0},
+		}
+	}
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
